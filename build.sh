@@ -57,7 +57,7 @@ ARCH=$(uname -m)
 if [ "$ARCH" = "x86_64" ]; then
     ARCH="x64"
 fi
-DEST_DIR="$HOME/openkeyscan/build/lib/mac/$ARCH"
+DEST_DIR="$HOME/workspace/openkeyscan/build/lib/mac/$ARCH"
 
 echo "======================================================================"
 echo "Moving build to library directory"
