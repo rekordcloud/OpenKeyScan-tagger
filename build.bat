@@ -50,3 +50,24 @@ echo.
 echo Or extract and distribute the zip file:
 echo   dist\openkeyscan-tagger.zip
 echo.
+
+set DEST_DIR=%USERPROFILE%\openkeyscan\build\lib\windows\x64
+
+echo ======================================================================
+echo Moving build to library directory
+echo ======================================================================
+echo.
+echo Architecture: x64
+echo Destination:  %DEST_DIR%
+echo.
+
+REM Create destination directory if it doesn't exist
+if not exist "%DEST_DIR%" mkdir "%DEST_DIR%"
+
+REM Copy the zip file to the destination, replacing any existing file
+copy /Y dist\openkeyscan-tagger.zip "%DEST_DIR%\"
+
+echo.
+echo Build successfully moved to:
+echo   %DEST_DIR%\openkeyscan-tagger.zip
+echo.

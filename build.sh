@@ -44,3 +44,28 @@ echo ""
 echo "Or extract and distribute the zip file:"
 echo "  dist/openkeyscan-tagger.zip"
 echo ""
+
+# Detect architecture and convert to Node.js format
+ARCH=$(uname -m)
+if [ "$ARCH" = "x86_64" ]; then
+    ARCH="x64"
+fi
+DEST_DIR="$HOME/openkeyscan/build/lib/mac/$ARCH"
+
+echo "======================================================================"
+echo "Moving build to library directory"
+echo "======================================================================"
+echo ""
+echo "Architecture: $ARCH"
+echo "Destination:  $DEST_DIR"
+echo ""
+
+# Create destination directory if it doesn't exist
+mkdir -p "$DEST_DIR"
+
+# Move the zip file to the destination, replacing any existing file
+cp -f dist/openkeyscan-tagger.zip "$DEST_DIR/"
+
+echo "Build successfully moved to:"
+echo "  $DEST_DIR/openkeyscan-tagger.zip"
+echo ""
