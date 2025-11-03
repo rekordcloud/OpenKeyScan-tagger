@@ -23,7 +23,7 @@ hiddenimports = [
 ]
 
 a = Analysis(
-    ['tag_keys_server.py'],
+    ['openkeyscan_tagger.py'],
     pathex=[str(base_path)],
     binaries=[],
     datas=datas,
@@ -45,7 +45,7 @@ exe_server = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='tag_keys_server',
+    name='openkeyscan-tagger',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -66,7 +66,7 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='tag_keys',
+    name='openkeyscan-tagger',
 )
 
 # Post-build: Dereference symlinks for distribution compatibility
@@ -163,7 +163,7 @@ def create_zip_archive(dist_path, output_name):
     print("="*70 + "\n")
 
 # Run the dereferencing
-dist_folder = Path(DISTPATH) / 'tag_keys'
+dist_folder = Path(DISTPATH) / 'openkeyscan-tagger'
 if dist_folder.exists():
     dereference_symlinks(dist_folder)
-    create_zip_archive(dist_folder, 'tag_keys')
+    create_zip_archive(dist_folder, 'openkeyscan-tagger')

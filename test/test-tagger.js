@@ -366,7 +366,7 @@ async function runTests(serverPath, testFilesDir) {
 }
 
 // Main execution
-const serverPath = process.argv[2] || '../tag_keys_server.py';
+const serverPath = process.argv[2] || '../openkeyscan_tagger.py';
 const testFilesDir = process.argv[3] || './test-files';
 
 runTests(serverPath, testFilesDir);

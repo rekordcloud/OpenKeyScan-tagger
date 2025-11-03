@@ -35,36 +35,36 @@ npm install
 
 Run the server directly with Python:
 ```bash
-pipenv run python tag_keys_server.py
+pipenv run python openkeyscan_tagger.py
 ```
 
 Or with custom worker count:
 ```bash
-pipenv run python tag_keys_server.py --workers 8
+pipenv run python openkeyscan_tagger.py --workers 8
 ```
 
 ### Building Executable
 
 Build standalone executable with PyInstaller:
 ```bash
-pipenv run pyinstaller tag_keys_server.spec
+pipenv run pyinstaller openkeyscan_tagger.spec
 ```
 
 This creates:
-- `dist/tag_keys/` - Executable folder
-- `dist/tag_keys.zip` - Compressed distribution
+- `dist/openkeyscan-tagger/` - Executable folder
+- `dist/openkeyscan-tagger.zip` - Compressed distribution
 
 ### Testing
 
 Run the test suite:
 ```bash
 cd test
-npm test -- ../tag_keys_server.py ./test-files
+npm test -- ../openkeyscan_tagger.py ./test-files
 ```
 
 Or test the built executable:
 ```bash
-npm test -- ../dist/tag_keys/tag_keys_server ./test-files
+npm test -- ../dist/openkeyscan-tagger/openkeyscan-tagger ./test-files
 ```
 
 ## Protocol Specification
@@ -137,7 +137,7 @@ For complete integration instructions with full code examples, see **[INTERFACIN
 ### Quick Example
 
 ```javascript
-const tagService = new KeyTaggingService('./dist/tag_keys/tag_keys_server');
+const tagService = new KeyTaggingService('./dist/openkeyscan-tagger/openkeyscan-tagger');
 await tagService.start();
 
 // Tag a single file
@@ -165,7 +165,7 @@ tagService.stop();
 ## Command Line Arguments
 
 ```bash
-tag_keys_server [OPTIONS]
+openkeyscan-tagger [OPTIONS]
 
 Options:
   -w, --workers N    Number of worker threads (default: 4)
@@ -207,7 +207,7 @@ test-files/
 
 ### Server doesn't start
 - Check executable path exists
-- Check executable permissions: `chmod +x tag_keys_server`
+- Check executable permissions: `chmod +x openkeyscan-tagger`
 - Monitor stderr for error messages
 
 ### "File not found" errors

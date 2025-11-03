@@ -2,7 +2,7 @@
 
 ## Overview
 
-The `tag_keys_server` is a long-running Python process that writes musical key metadata to audio files. It communicates via **stdin/stdout using line-delimited JSON (NDJSON)** protocol, making it ideal for Electron IPC integration.
+The `openkeyscan-tagger` is a long-running Python process that writes musical key metadata to audio files. It communicates via **stdin/stdout using line-delimited JSON (NDJSON)** protocol, making it ideal for Electron IPC integration.
 
 ---
 
@@ -267,8 +267,8 @@ const { app } = require('electron');
 
 // Initialize service
 const serverPath = app.isPackaged
-  ? path.join(process.resourcesPath, 'tag_keys/tag_keys_server')
-  : path.join(__dirname, '../dist/tag_keys/tag_keys_server');
+  ? path.join(process.resourcesPath, 'openkeyscan-tagger/openkeyscan-tagger')
+  : path.join(__dirname, '../dist/openkeyscan-tagger/openkeyscan-tagger');
 
 const tagService = new KeyTaggingService(serverPath);
 

@@ -25,7 +25,7 @@ echo Starting PyInstaller build...
 echo.
 
 REM Run PyInstaller with --noconfirm to skip prompts
-pyinstaller --noconfirm tag_keys_server.spec
+pyinstaller --noconfirm openkeyscan_tagger.spec
 
 if %ERRORLEVEL% NEQ 0 (
     echo.
@@ -41,12 +41,12 @@ echo Build Complete!
 echo ======================================================================
 echo.
 echo Output:
-echo   Executable: dist\tag_keys\tag_keys_server.exe
-echo   Archive:    dist\tag_keys.zip
+echo   Executable: dist\openkeyscan-tagger\openkeyscan-tagger.exe
+echo   Archive:    dist\openkeyscan-tagger.zip
 echo.
 echo Test the build:
-echo   dist\tag_keys\tag_keys_server.exe
+echo   dist\openkeyscan-tagger\openkeyscan-tagger.exe
 echo.
 echo Or extract and distribute the zip file:
-echo   dist\tag_keys.zip
+echo   dist\openkeyscan-tagger.zip
 echo.
