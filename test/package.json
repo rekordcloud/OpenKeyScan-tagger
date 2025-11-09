@@ -4,7 +4,10 @@
   "description": "Test suite for key tagging server",
   "main": "test-tagger.js",
   "scripts": {
-    "test": "node test-tagger.js"
+    "test": "node run-all-tests.js",
+    "test:write": "node test-tagger.js",
+    "test:read": "python3 test_read_function.py",
+    "test:compat": "python3 test_lexicon_compatibility.py"
   },
   "dependencies": {
     "music-metadata": "^11.9.0"

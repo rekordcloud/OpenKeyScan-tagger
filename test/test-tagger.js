@@ -219,16 +219,27 @@ async function verifyKeyInFile(filePath, expectedKey, debug = false) {
       const id3Key = metadata.native.ID3v2?.find(tag => tag.id === 'TKEY');
       if (id3Key) key = id3Key.value;
 
-      // Vorbis comments (OGG, FLAC)
+      // Vorbis comments (OGG, FLAC) - check both 'INITIALKEY' (standard) and 'KEY' (legacy)
+      // Note: music-metadata returns uppercase field IDs for Vorbis
       if (!key) {
-        const vorbisKey = metadata.native.vorbis?.find(tag => tag.id === 'KEY');
-        if (vorbisKey) key = vorbisKey.value;
+        const vorbisInitialKey = metadata.native.vorbis?.find(tag => tag.id === 'INITIALKEY');
+        if (vorbisInitialKey) key = vorbisInitialKey.value;
+
+        if (!key) {
+          const vorbisKey = metadata.native.vorbis?.find(tag => tag.id === 'KEY');
+          if (vorbisKey) key = vorbisKey.value;
+        }
       }
 
-      // iTunes/MP4 freeform tags
+      // iTunes/MP4 freeform tags - check both 'initialkey' (standard) and 'KEY' (legacy)
       if (!key) {
-        const itunesKey = metadata.native.iTunes?.find(tag => tag.id === '----:com.apple.iTunes:KEY');
-        if (itunesKey) key = itunesKey.value;
+        const itunesInitialKey = metadata.native.iTunes?.find(tag => tag.id === '----:com.apple.iTunes:initialkey');
+        if (itunesInitialKey) key = itunesInitialKey.value;
+
+        if (!key) {
+          const itunesKey = metadata.native.iTunes?.find(tag => tag.id === '----:com.apple.iTunes:KEY');
+          if (itunesKey) key = itunesKey.value;
+        }
       }
     }
 
@@ -246,6 +257,60 @@ async function verifyKeyInFile(filePath, expectedKey, debug = false) {
   } catch (err) {
     console.error(`  Error reading metadata: ${err.message}`);
     return null;
+  }
+}
+
+async function verifyBothFieldsWritten(filePath, expectedKey, debug = false) {
+  /**
+   * Verify that both 'initialkey' and 'KEY' fields are written for formats that support dual fields
+   * Returns { bothPresent: boolean, initialkey: string|null, KEY: string|null }
+   */
+  try {
+    const metadata = await parseFile(filePath);
+    const ext = filePath.split('.').pop().toLowerCase();
+
+    if (debug) {
+      console.log('\n  Debug - Dual field check:', JSON.stringify(metadata.native, null, 2));
+    }
+
+    // For FLAC/OGG - check Vorbis comments
+    // Note: music-metadata returns uppercase field IDs for Vorbis
+    if (ext === 'flac' || ext === 'ogg') {
+      const initialkey = metadata.native.vorbis?.find(tag => tag.id === 'INITIALKEY')?.value;
+      const KEY = metadata.native.vorbis?.find(tag => tag.id === 'KEY')?.value;
+      return {
+        bothPresent: Boolean(initialkey && KEY && initialkey === KEY && initialkey === expectedKey),
+        initialkey,
+        KEY,
+        format: 'vorbis'
+      };
+    }
+
+    // For MP4/M4A/ALAC - check iTunes freeform tags
+    if (ext === 'mp4' || ext === 'm4a' || ext === 'alac') {
+      const initialkeyTag = metadata.native.iTunes?.find(tag => tag.id === '----:com.apple.iTunes:initialkey');
+      const KEYTag = metadata.native.iTunes?.find(tag => tag.id === '----:com.apple.iTunes:KEY');
+
+      const initialkey = initialkeyTag?.value;
+      const KEY = KEYTag?.value;
+
+      // Handle buffer values
+      const initialkeyStr = initialkey && Buffer.isBuffer(initialkey) ? initialkey.toString('utf-8') : initialkey;
+      const KEYStr = KEY && Buffer.isBuffer(KEY) ? KEY.toString('utf-8') : KEY;
+
+      return {
+        bothPresent: Boolean(initialkeyStr && KEYStr && initialkeyStr === KEYStr && initialkeyStr === expectedKey),
+        initialkey: initialkeyStr,
+        KEY: KEYStr,
+        format: 'iTunes'
+      };
+    }
+
+    // For other formats, dual fields are not expected
+    return { bothPresent: true, initialkey: null, KEY: null, format: 'single-field' };
+  } catch (err) {
+    console.error(`  Error checking dual fields: ${err.message}`);
+    return { bothPresent: false, initialkey: null, KEY: null, error: err.message };
   }
 }
 
@@ -318,9 +383,21 @@ async function runTests(serverPath, testFilesDir) {
         await new Promise(resolve => setTimeout(resolve, 500));
         const readKey = await verifyKeyInFile(filePath, testKey);
 
+        // For formats that support dual fields, verify both are written
+        const dualFieldCheck = await verifyBothFieldsWritten(filePath, testKey);
+        const isDualFieldFormat = ['flac', 'ogg', 'mp4', 'm4a', 'alac'].includes(ext);
+
         if (readKey === testKey) {
-          console.log(`✅ SUCCESS (wrote "${testKey}", read "${readKey}")`);
-          results.push({ format: format.name, ext, success: true, key: testKey });
+          // Check if both fields are present for dual-field formats
+          if (isDualFieldFormat && !dualFieldCheck.bothPresent) {
+            console.log(`⚠️  PARTIAL (wrote "${testKey}", read "${readKey}", but missing dual fields)`);
+            console.log(`    initialkey="${dualFieldCheck.initialkey}", KEY="${dualFieldCheck.KEY}"`);
+            results.push({ format: format.name, ext, success: false, key: testKey, readKey, error: 'Missing dual fields' });
+          } else {
+            const dualFieldMsg = isDualFieldFormat ? ' [both fields ✓]' : '';
+            console.log(`✅ SUCCESS (wrote "${testKey}", read "${readKey}"${dualFieldMsg})`);
+            results.push({ format: format.name, ext, success: true, key: testKey });
+          }
         } else {
           console.log(`⚠️  MISMATCH (wrote "${testKey}", read "${readKey || 'null'}")`);
           console.log(`    Server response:`, writeResult);

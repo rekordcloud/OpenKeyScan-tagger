@@ -65,26 +65,53 @@ The `openkeyscan-tagger` is a long-running Python process that writes musical ke
 
 The server supports writing key metadata to the following formats:
 
-| Format | Extension | Tag Type | Field |
-|--------|-----------|----------|-------|
-| MP3 | `.mp3` | ID3v2.4 | TKEY frame |
-| MP4 | `.mp4` | iTunes freeform | `----:com.apple.iTunes:KEY` |
-| M4A | `.m4a` | iTunes freeform | `----:com.apple.iTunes:KEY` |
-| AAC | `.aac` | ID3v2.4 | TKEY frame (ADTS AAC) |
-| AIFF | `.aiff` | ID3 | TKEY frame |
-| AIF | `.aif` | ID3 | TKEY frame |
-| ALAC | `.alac` | ID3 | TKEY frame |
-| WAV | `.wav` | ID3 | TKEY frame |
-| OGG | `.ogg` | Vorbis Comments | `KEY` field |
-| FLAC | `.flac` | Vorbis Comments | `KEY` field |
+| Format | Extension | Tag Type | Fields Written | Read Priority |
+|--------|-----------|----------|----------------|---------------|
+| MP3 | `.mp3` | ID3v2.4 | `TKEY` frame | `TKEY` |
+| MP4 | `.mp4` | iTunes freeform | `initialkey` + `KEY` | `initialkey` > `KEY` |
+| M4A | `.m4a` | iTunes freeform | `initialkey` + `KEY` | `initialkey` > `KEY` |
+| AAC | `.aac` | ID3v2.4 | `TKEY` frame | `TKEY` |
+| AIFF | `.aiff` | ID3 | `TKEY` frame | `TKEY` |
+| AIF | `.aif` | ID3 | `TKEY` frame | `TKEY` |
+| ALAC | `.alac` | iTunes freeform | `initialkey` + `KEY` | `initialkey` > `KEY` |
+| WAV | `.wav` | ID3 | `TKEY` frame | `TKEY` |
+| OGG | `.ogg` | Vorbis Comments | `initialkey` + `KEY` | `initialkey` > `KEY` |
+| FLAC | `.flac` | Vorbis Comments | `initialkey` + `KEY` | `initialkey` > `KEY` |
+
+### Dual-Field Write Behavior
+
+For **maximum compatibility** with other DJ tools (especially lexicon-tagger), the server writes to **both standard and legacy field names** for certain formats:
+
+- **FLAC/OGG**: Writes to both `initialkey` (standard Vorbis field) and `KEY` (legacy)
+- **MP4/M4A/ALAC**: Writes to both `----:com.apple.iTunes:initialkey` (standard) and `----:com.apple.iTunes:KEY` (legacy)
+
+This ensures:
+- ✅ Full compatibility with lexicon-tagger (reads `initialkey`)
+- ✅ Backward compatibility with files using `KEY` field
+- ✅ Follows Vorbis Comment and iTunes tag standards
+
+### Read Function
+
+The `read_key_from_file()` function reads keys with the following priority:
+1. Checks for `initialkey` field first (standard)
+2. Falls back to `KEY` field (legacy) if `initialkey` not found
+3. Returns `None` if no key field exists
+
+**Case-Insensitive Matching**: Field name lookups are case-insensitive, so the function works with any case variation:
+- `initialkey`, `INITIALKEY`, `InitialKey`, `initialKey` → all work
+- `KEY`, `key`, `Key` → all work
+
+This allows the tagger to read keys from files written by any tool, regardless of field name casing.
 
 ### Key Format Support
 
-The server accepts any key format:
+The server accepts and preserves any key format string without modification:
 - **Camelot notation**: `1A`, `2A`, ..., `12A` (minor), `1B`, `2B`, ..., `12B` (major)
 - **OpenKey notation**: `1m`, `2m`, ..., `12m` (minor), `1d`, `2d`, ..., `12d` (major)
 - **Plain text**: `C major`, `D minor`, `E minor`, etc.
 - **Custom values**: Any string value you want to store
+
+The tagger does not perform any key format conversion or normalization - it writes exactly what you provide.
 
 ---
 

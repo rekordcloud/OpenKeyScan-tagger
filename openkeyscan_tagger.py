@@ -51,6 +51,139 @@ def sync_file(file_path):
         pass  # Best effort, don't fail if sync doesn't work
 
 
+def get_vorbis_field_case_insensitive(audio, field_name):
+    """
+    Get a Vorbis comment field value with case-insensitive lookup.
+
+    Args:
+        audio: Mutagen audio object with Vorbis comments
+        field_name: Field name to search for (case-insensitive)
+
+    Returns:
+        Field value if found, None otherwise
+    """
+    field_lower = field_name.lower()
+    for key in audio.keys():
+        if key.lower() == field_lower:
+            value_list = audio[key]
+            return value_list[0] if value_list else None
+    return None
+
+
+def get_mp4_field_case_insensitive(audio, field_name):
+    """
+    Get an MP4 freeform tag value with case-insensitive lookup.
+
+    Args:
+        audio: Mutagen MP4 audio object
+        field_name: Field name to search for (case-insensitive)
+
+    Returns:
+        Field value if found, None otherwise
+    """
+    field_lower = field_name.lower()
+    for key in audio.keys():
+        if key.lower() == field_lower:
+            value_list = audio[key]
+            if value_list:
+                value = value_list[0]
+                return value.decode('utf-8') if isinstance(value, bytes) else str(value)
+    return None
+
+
+def read_key_from_file(file_path):
+    """
+    Read key metadata from an audio file using mutagen.
+
+    For maximum compatibility, checks both standard and legacy field names:
+    - FLAC/OGG: Prefers 'initialkey' over 'KEY' (case-insensitive)
+    - MP4/M4A: Prefers '----:com.apple.iTunes:initialkey' over '----:com.apple.iTunes:KEY' (case-insensitive)
+    - ID3 formats: Reads 'TKEY' frame
+
+    Field name matching is case-insensitive to handle variations like:
+    'initialkey', 'INITIALKEY', 'InitialKey', 'KEY', 'key', etc.
+
+    Args:
+        file_path (Path): Path to audio file
+
+    Returns:
+        tuple: (success: bool, key_value: str or None, format: str, error_message: str or None)
+    """
+    try:
+        file_ext = file_path.suffix.lower()
+
+        # MP3 files - read ID3v2 TKEY frame
+        if file_ext == '.mp3':
+            try:
+                audio = ID3(file_path)
+                if 'TKEY' in audio:
+                    key_value = str(audio['TKEY'].text[0]) if audio['TKEY'].text else None
+                    return True, key_value, 'mp3', None
+                return True, None, 'mp3', None
+            except ID3NoHeaderError:
+                return True, None, 'mp3', None
+
+        # AAC files with ID3 tags (ADTS AAC)
+        elif file_ext == '.aac':
+            try:
+                audio = ID3(file_path)
+                if 'TKEY' in audio:
+                    key_value = str(audio['TKEY'].text[0]) if audio['TKEY'].text else None
+                    return True, key_value, 'aac', None
+                return True, None, 'aac', None
+            except ID3NoHeaderError:
+                return True, None, 'aac', None
+
+        # MP4/M4A/ALAC files - read freeform tags
+        elif file_ext in ['.mp4', '.m4a', '.alac']:
+            audio = MP4(file_path)
+            # Check initialkey first (standard), then KEY (legacy) - case insensitive
+            key_value = get_mp4_field_case_insensitive(audio, '----:com.apple.iTunes:initialkey')
+            if not key_value:
+                key_value = get_mp4_field_case_insensitive(audio, '----:com.apple.iTunes:KEY')
+            return True, key_value, file_ext[1:], None
+
+        # FLAC files - read Vorbis comments
+        elif file_ext == '.flac':
+            audio = FLAC(file_path)
+            # Check initialkey first (standard), then KEY (legacy) - case insensitive
+            key_value = get_vorbis_field_case_insensitive(audio, 'initialkey')
+            if not key_value:
+                key_value = get_vorbis_field_case_insensitive(audio, 'KEY')
+            return True, key_value, 'flac', None
+
+        # OGG Vorbis files - read Vorbis comments
+        elif file_ext == '.ogg':
+            audio = OggVorbis(file_path)
+            # Check initialkey first (standard), then KEY (legacy) - case insensitive
+            key_value = get_vorbis_field_case_insensitive(audio, 'initialkey')
+            if not key_value:
+                key_value = get_vorbis_field_case_insensitive(audio, 'KEY')
+            return True, key_value, 'ogg', None
+
+        # AIFF/AIF files - read ID3 tags
+        elif file_ext in ['.aiff', '.aif']:
+            audio = AIFF(file_path)
+            if audio.tags and 'TKEY' in audio.tags:
+                key_value = str(audio.tags['TKEY'].text[0]) if audio.tags['TKEY'].text else None
+                return True, key_value, file_ext[1:], None
+            return True, None, file_ext[1:], None
+
+        # WAV files - read ID3 tags
+        elif file_ext == '.wav':
+            audio = WAVE(file_path)
+            if audio.tags and 'TKEY' in audio.tags:
+                key_value = str(audio.tags['TKEY'].text[0]) if audio.tags['TKEY'].text else None
+                return True, key_value, 'wav', None
+            return True, None, 'wav', None
+
+        else:
+            return False, None, None, f"Unsupported file format: {file_ext}"
+
+    except Exception as e:
+        return False, None, None, str(e)
+
+
 def write_key_to_file(file_path, key_value):
     """
     Write key metadata to an audio file using mutagen.
@@ -96,25 +229,30 @@ def write_key_to_file(file_path, key_value):
             return True, None, 'aac'
 
         # MP4/M4A/ALAC files - use freeform tags
+        # Write to both 'initialkey' (standard) and 'KEY' (legacy) for compatibility
         elif file_ext in ['.mp4', '.m4a', '.alac']:
             audio = MP4(file_path)
-            # Use freeform ----:com.apple.iTunes:KEY tag
+            audio['----:com.apple.iTunes:initialkey'] = key_value.encode('utf-8')
             audio['----:com.apple.iTunes:KEY'] = key_value.encode('utf-8')
             audio.save()
             sync_file(file_path)
             return True, None, file_ext[1:]
 
         # FLAC files - use Vorbis comments
+        # Write to both 'initialkey' (standard) and 'KEY' (legacy) for compatibility
         elif file_ext == '.flac':
             audio = FLAC(file_path)
+            audio['initialkey'] = key_value
             audio['KEY'] = key_value
             audio.save()
             sync_file(file_path)
             return True, None, 'flac'
 
         # OGG Vorbis files - use Vorbis comments
+        # Write to both 'initialkey' (standard) and 'KEY' (legacy) for compatibility
         elif file_ext == '.ogg':
             audio = OggVorbis(file_path)
+            audio['initialkey'] = key_value
             audio['KEY'] = key_value
             audio.save()
             sync_file(file_path)
