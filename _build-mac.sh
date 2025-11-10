@@ -67,31 +67,27 @@ pipenv run pyinstaller --noconfirm openkeyscan_tagger.spec
 
 echo ""
 echo "======================================================================"
-echo "Post-build: Packaging"
+echo "Post-build: Cleanup"
 echo "======================================================================"
 echo ""
 
-# Create ZIP archive using ditto (preserves code signatures)
-echo "Creating distribution archive..."
-if [ -f "dist/openkeyscan-tagger.zip" ]; then
-    rm dist/openkeyscan-tagger.zip
-fi
-ditto -c -k --keepParent dist/openkeyscan-tagger dist/openkeyscan-tagger.zip
-echo "✓ Created: dist/openkeyscan-tagger.zip"
-
+# Remove unused OpenSSL libraries
+echo "Removing unused OpenSSL libraries..."
+rm -f dist/openkeyscan-tagger/_internal/libssl.3.dylib
+rm -f dist/openkeyscan-tagger/_internal/libcrypto.3.dylib
+echo "✓ Removed OpenSSL libraries"
 echo ""
+
 echo "======================================================================"
 echo "Build Complete!"
 echo "======================================================================"
 echo ""
 echo "Output:"
 echo "  Executable: dist/openkeyscan-tagger/openkeyscan-tagger"
-echo "  Archive:    dist/openkeyscan-tagger.zip"
 echo ""
 
 # Copy to distribution directory and clean up Python.framework
 DEST_DIR="$HOME/workspace/openkeyscan/openkeyscan-app/build/lib/mac/$ARCH_DIR"
-ZIP_FILE="dist/openkeyscan-tagger.zip"
 
 echo "Installing to distribution directory..."
 echo "  Architecture: $ARCH_DIR"
@@ -116,16 +112,6 @@ if [ -d "$DEST_DIR/openkeyscan-tagger/_internal/Python.framework" ]; then
 else
     echo "  (Python.framework not found, skipping)"
 fi
-echo ""
-
-# Copy the zip file
-if [ -f "$ZIP_FILE" ]; then
-    cp "$ZIP_FILE" "$DEST_DIR/openkeyscan-tagger.zip"
-    echo "✓ Installed: $DEST_DIR/openkeyscan-tagger.zip"
-else
-    echo "Error: ZIP file not found at $ZIP_FILE"
-    exit 1
-fi
 
 echo ""
 echo "======================================================================"
@@ -135,6 +121,6 @@ echo ""
 echo "Test the build:"
 echo "  ./dist/openkeyscan-tagger/openkeyscan-tagger"
 echo ""
-echo "Distribution package:"
-echo "  $DEST_DIR/openkeyscan-tagger.zip"
+echo "Distribution location:"
+echo "  $DEST_DIR/openkeyscan-tagger/"
 echo ""
