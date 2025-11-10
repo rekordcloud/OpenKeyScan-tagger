@@ -30,6 +30,19 @@ from mutagen.oggvorbis import OggVorbis
 from mutagen.aiff import AIFF
 from mutagen.wave import WAVE
 
+# ============================================================================
+# CRITICAL: UTF-8 Encoding Configuration for Windows/PyInstaller
+# ============================================================================
+# On Windows, Python defaults to cp1252 encoding for stdio, but Node.js
+# child_process sends UTF-8. This mismatch causes UnicodeDecodeError when
+# reading JSON with non-ASCII characters (e.g., file paths with accents).
+#
+# Solution: Reconfigure stdin/stdout to UTF-8 at runtime at MODULE LEVEL.
+# Must be done BEFORE any sys.stdin.readline() calls and at module level
+# (not inside a function) so it executes during import.
+# ============================================================================
+sys.stdin.reconfigure(encoding="utf-8")
+sys.stdout.reconfigure(encoding="utf-8")
 
 def get_resource_path(relative_path):
     """Get absolute path to resource, works for dev and PyInstaller."""
