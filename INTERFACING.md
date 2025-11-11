@@ -15,7 +15,7 @@ The `openkeyscan-tagger` is a long-running Python process that writes musical ke
 
 ### Message Types
 
-#### 1. Request (Electron → Server)
+#### 1. Write Request (Electron → Server)
 ```json
 {"id": "unique-uuid-1234", "path": "/absolute/path/to/song.mp3", "key": "9A"}
 ```
@@ -25,7 +25,19 @@ The `openkeyscan-tagger` is a long-running Python process that writes musical ke
 - `path` (string, required): Absolute file path to audio file (**must not use `~` expansion**)
 - `key` (string, required): Key value to write (any format: Camelot, OpenKey, plain text)
 
-#### 2. Success Response (Server → Electron)
+#### 2. Read Request (Electron → Server)
+```json
+{"id": "unique-uuid-1234", "path": "/absolute/path/to/song.mp3"}
+```
+
+**Fields:**
+- `id` (string, required): Unique identifier to match responses to requests
+- `path` (string, required): Absolute file path to audio file (**must not use `~` expansion**)
+- `key` (string, optional): **Omit this field** to read the key from the file
+
+**Note:** If `key` is missing or empty, the server treats the request as a read operation.
+
+#### 3. Success Response (Server → Electron)
 ```json
 {
   "id": "unique-uuid-1234",
@@ -39,11 +51,11 @@ The `openkeyscan-tagger` is a long-running Python process that writes musical ke
 **Fields:**
 - `id`: Matches the request ID
 - `status`: "success"
-- `key`: The key value that was written
+- `key`: The key value that was written (write request) or read from file (read request). May be `null` if no key exists in the file.
 - `filename`: Name of the tagged file
 - `format`: File format (mp3, mp4, m4a, aac, aiff, wav, ogg, flac)
 
-#### 3. Error Response (Server → Electron)
+#### 4. Error Response (Server → Electron)
 ```json
 {
   "id": "unique-uuid-1234",
@@ -53,7 +65,7 @@ The `openkeyscan-tagger` is a long-running Python process that writes musical ke
 }
 ```
 
-#### 4. System Messages (Server → Electron)
+#### 5. System Messages (Server → Electron)
 ```json
 {"type": "ready"}      // Sent once on startup (server ready)
 {"type": "heartbeat"}  // Sent every 30 seconds (server alive)
@@ -245,6 +257,43 @@ class KeyTaggingService {
     });
   }
 
+  readKey(filePath, timeoutMs = 10000) {
+    return new Promise((resolve, reject) => {
+      if (!this.isReady) {
+        return reject(new Error('Server not ready'));
+      }
+
+      // Generate unique request ID
+      const requestId = uuidv4();
+
+      // Convert to absolute path (important!)
+      const absolutePath = path.resolve(filePath);
+
+      // Set up timeout
+      const timeout = setTimeout(() => {
+        this.pendingRequests.delete(requestId);
+        reject(new Error(`Read timeout after ${timeoutMs}ms`));
+      }, timeoutMs);
+
+      // Store resolver
+      this.pendingRequests.set(requestId, { resolve, reject, timeout });
+
+      // Send read request (no key field)
+      const request = {
+        id: requestId,
+        path: absolutePath
+      };
+
+      try {
+        this.serverProcess.stdin.write(JSON.stringify(request) + '\n');
+      } catch (err) {
+        this.pendingRequests.delete(requestId);
+        clearTimeout(timeout);
+        reject(err);
+      }
+    });
+  }
+
   async tagMultiple(files) {
     // Tag multiple files concurrently
     // files: Array of {path: string, key: string}
@@ -309,6 +358,14 @@ app.on('ready', async () => {
     const result = await tagService.tagFile('/path/to/song.mp3', '9A');
     console.log(`Tagged ${result.filename} with key ${result.key}`);
 
+    // Example: Read key from a file
+    const readResult = await tagService.readKey('/path/to/song.mp3');
+    if (readResult.key) {
+      console.log(`Read key ${readResult.key} from ${readResult.filename}`);
+    } else {
+      console.log(`No key found in ${readResult.filename}`);
+    }
+
     // Example: Tag multiple files with different keys
     const results = await tagService.tagMultiple([
       { path: '/path/to/song1.mp3', key: '9A' },
@@ -347,6 +404,16 @@ ipcMain.handle('tag-key', async (event, filePath, keyValue) => {
   }
 });
 
+// Register IPC handler for reading key
+ipcMain.handle('read-key', async (event, filePath) => {
+  try {
+    const result = await tagService.readKey(filePath);
+    return { success: true, data: result };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
 // Register IPC handler for batch tagging
 ipcMain.handle('tag-keys-batch', async (event, files) => {
   try {
@@ -359,6 +426,7 @@ ipcMain.handle('tag-keys-batch', async (event, files) => {
 
 // In renderer process:
 // const result = await ipcRenderer.invoke('tag-key', '/path/to/song.mp3', '9A');
+// const readResult = await ipcRenderer.invoke('read-key', '/path/to/song.mp3');
 // const results = await ipcRenderer.invoke('tag-keys-batch', [
 //   { path: '/path/song1.mp3', key: '9A' },
 //   { path: '/path/song2.mp3', key: '3B' }

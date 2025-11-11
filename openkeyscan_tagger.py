@@ -2,15 +2,18 @@
 """
 Key Tagging Server - stdin/stdout JSON Protocol
 
-Runs as a long-running process, writing key metadata to audio files.
+Runs as a long-running process, writing and reading key metadata to/from audio files.
 Communicates via line-delimited JSON (NDJSON) protocol.
 
 Protocol:
-  Request:  {"id": "uuid", "path": "/absolute/path/file.mp3", "key": "9A"}
-  Success:  {"id": "uuid", "status": "success", "key": "9A", "filename": "file.mp3", "format": "mp3"}
-  Error:    {"id": "uuid", "status": "error", "error": "Error message", "filename": "file.mp3"}
-  Ready:    {"type": "ready"}
-  Heartbeat: {"type": "heartbeat"}
+  Write Request:  {"id": "uuid", "path": "/absolute/path/file.mp3", "key": "9A"}
+  Read Request:    {"id": "uuid", "path": "/absolute/path/file.mp3"}
+  Success:         {"id": "uuid", "status": "success", "key": "9A", "filename": "file.mp3", "format": "mp3"}
+  Error:           {"id": "uuid", "status": "error", "error": "Error message", "filename": "file.mp3"}
+  Ready:           {"type": "ready"}
+  Heartbeat:       {"type": "heartbeat"}
+
+Note: If "key" field is missing or empty, the request is treated as a read operation.
 """
 
 import sys
@@ -335,10 +338,12 @@ class KeyTaggingServer:
 
     def process_request(self, request):
         """
-        Process a single key tagging request.
+        Process a single key tagging or reading request.
 
         Args:
-            request (dict): Request with 'id', 'path', and 'key' fields
+            request (dict): Request with 'id', 'path', and optionally 'key' fields
+                - If 'key' is provided: writes key to file
+                - If 'key' is missing/empty: reads key from file
 
         Returns:
             dict: Response message
@@ -358,13 +363,25 @@ class KeyTaggingServer:
                     'filename': audio_path.name
                 }
 
-            if not key_value:
-                return {
-                    'id': request_id,
-                    'status': 'error',
-                    'error': 'No key value provided',
-                    'filename': audio_path.name
-                }
+            # If no key provided, treat as read request
+            if not key_value or key_value == '':
+                success, read_key, format_type, error_msg = read_key_from_file(audio_path)
+
+                if success:
+                    return {
+                        'id': request_id,
+                        'status': 'success',
+                        'key': read_key,
+                        'filename': audio_path.name,
+                        'format': format_type
+                    }
+                else:
+                    return {
+                        'id': request_id,
+                        'status': 'error',
+                        'error': error_msg or 'Failed to read key',
+                        'filename': audio_path.name
+                    }
 
             # Write key to file
             success, error_msg, format_type = write_key_to_file(audio_path, key_value)
