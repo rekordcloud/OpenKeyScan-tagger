@@ -44,7 +44,11 @@ The `openkeyscan-tagger` is a long-running Python process that writes musical ke
   "status": "success",
   "key": "9A",
   "filename": "song.mp3",
-  "format": "mp3"
+  "format": "mp3",
+  "artist": "Artist Name",
+  "title": "Track Title",
+  "album": "Album Name",
+  "albumArtPath": "/tmp/openkeyscan-art-uuid.jpg"
 }
 ```
 
@@ -54,6 +58,10 @@ The `openkeyscan-tagger` is a long-running Python process that writes musical ke
 - `key`: The key value that was written (write request) or read from file (read request). May be `null` if no key exists in the file.
 - `filename`: Name of the tagged file
 - `format`: File format (mp3, mp4, m4a, aac, aiff, wav, ogg, flac)
+- `artist`: Artist name (optional, may be `null` if not found in file)
+- `title`: Track title (optional, may be `null` if not found in file)
+- `album`: Album name (optional, may be `null` if not found in file)
+- `albumArtPath`: Temporary file path to extracted album art (optional, only included if album art is found)
 
 #### 4. Error Response (Server → Electron)
 ```json

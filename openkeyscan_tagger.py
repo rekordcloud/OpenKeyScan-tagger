@@ -8,12 +8,12 @@ Communicates via line-delimited JSON (NDJSON) protocol.
 Protocol:
   Write Request:  {"id": "uuid", "path": "/absolute/path/file.mp3", "key": "9A"}
   Read Request:    {"id": "uuid", "path": "/absolute/path/file.mp3"}
-  Success:         {"id": "uuid", "status": "success", "key": "9A", "filename": "file.mp3", "format": "mp3", "albumArtPath": "/tmp/openkeyscan-art-uuid.jpg"}
+  Success:         {"id": "uuid", "status": "success", "key": "9A", "filename": "file.mp3", "format": "mp3", "artist": "Artist Name", "title": "Track Title", "album": "Album Name", "albumArtPath": "/tmp/openkeyscan-art-uuid.jpg"}
   Error:           {"id": "uuid", "status": "error", "error": "Error message", "filename": "file.mp3"}
   Ready:           {"type": "ready"}
   Heartbeat:       {"type": "heartbeat"}
 
-Note: albumArtPath is optional and only included if album art is found in the file.
+Note: albumArtPath, artist, title, and album are optional and only included if found in the file.
 
 Note: If "key" field is missing or empty, the request is treated as a read operation.
 """
@@ -231,7 +231,7 @@ def extract_album_art(file_path):
 
 def read_key_from_file(file_path):
     """
-    Read key metadata from an audio file using mutagen.
+    Read key and metadata (artist, title, album) from an audio file using mutagen.
 
     For maximum compatibility, checks both standard and legacy field names:
     - FLAC/OGG: Prefers 'initialkey' over 'KEY' (case-insensitive)
@@ -245,41 +245,56 @@ def read_key_from_file(file_path):
         file_path (Path): Path to audio file
 
     Returns:
-        tuple: (success: bool, key_value: str or None, format: str, error_message: str or None)
+        tuple: (success: bool, key_value: str or None, format: str, error_message: str or None,
+                artist: str or None, title: str or None, album: str or None)
     """
     try:
         file_ext = file_path.suffix.lower()
 
-        # MP3 files - read ID3v2 TKEY frame
+        # MP3 files - read ID3v2 TKEY frame and metadata
         if file_ext == '.mp3':
             try:
                 audio = ID3(file_path)
-                if 'TKEY' in audio:
-                    key_value = str(audio['TKEY'].text[0]) if audio['TKEY'].text else None
-                    return True, key_value, 'mp3', None
-                return True, None, 'mp3', None
+                key_value = str(audio['TKEY'].text[0]) if 'TKEY' in audio and audio['TKEY'].text else None
+                artist = str(audio['TPE1'].text[0]) if 'TPE1' in audio and audio['TPE1'].text else None
+                title = str(audio['TIT2'].text[0]) if 'TIT2' in audio and audio['TIT2'].text else None
+                album = str(audio['TALB'].text[0]) if 'TALB' in audio and audio['TALB'].text else None
+                return True, key_value, 'mp3', None, artist, title, album
             except ID3NoHeaderError:
-                return True, None, 'mp3', None
+                return True, None, 'mp3', None, None, None, None
 
         # AAC files with ID3 tags (ADTS AAC)
         elif file_ext == '.aac':
             try:
                 audio = ID3(file_path)
-                if 'TKEY' in audio:
-                    key_value = str(audio['TKEY'].text[0]) if audio['TKEY'].text else None
-                    return True, key_value, 'aac', None
-                return True, None, 'aac', None
+                key_value = str(audio['TKEY'].text[0]) if 'TKEY' in audio and audio['TKEY'].text else None
+                artist = str(audio['TPE1'].text[0]) if 'TPE1' in audio and audio['TPE1'].text else None
+                title = str(audio['TIT2'].text[0]) if 'TIT2' in audio and audio['TIT2'].text else None
+                album = str(audio['TALB'].text[0]) if 'TALB' in audio and audio['TALB'].text else None
+                return True, key_value, 'aac', None, artist, title, album
             except ID3NoHeaderError:
-                return True, None, 'aac', None
+                return True, None, 'aac', None, None, None, None
 
-        # MP4/M4A/ALAC files - read freeform tags
+        # MP4/M4A/ALAC files - read freeform tags and standard atoms
         elif file_ext in ['.mp4', '.m4a', '.alac']:
             audio = MP4(file_path)
             # Check initialkey first (standard), then KEY (legacy) - case insensitive
             key_value = get_mp4_field_case_insensitive(audio, '----:com.apple.iTunes:initialkey')
             if not key_value:
                 key_value = get_mp4_field_case_insensitive(audio, '----:com.apple.iTunes:KEY')
-            return True, key_value, file_ext[1:], None
+
+            # Read standard MP4 atoms for metadata
+            artist = None
+            title = None
+            album = None
+            if '\xa9ART' in audio and audio['\xa9ART']:
+                artist = str(audio['\xa9ART'][0])
+            if '\xa9nam' in audio and audio['\xa9nam']:
+                title = str(audio['\xa9nam'][0])
+            if '\xa9alb' in audio and audio['\xa9alb']:
+                album = str(audio['\xa9alb'][0])
+
+            return True, key_value, file_ext[1:], None, artist, title, album
 
         # FLAC files - read Vorbis comments
         elif file_ext == '.flac':
@@ -288,7 +303,13 @@ def read_key_from_file(file_path):
             key_value = get_vorbis_field_case_insensitive(audio, 'initialkey')
             if not key_value:
                 key_value = get_vorbis_field_case_insensitive(audio, 'KEY')
-            return True, key_value, 'flac', None
+
+            # Read metadata from Vorbis comments
+            artist = get_vorbis_field_case_insensitive(audio, 'artist')
+            title = get_vorbis_field_case_insensitive(audio, 'title')
+            album = get_vorbis_field_case_insensitive(audio, 'album')
+
+            return True, key_value, 'flac', None, artist, title, album
 
         # OGG Vorbis files - read Vorbis comments
         elif file_ext == '.ogg':
@@ -297,29 +318,51 @@ def read_key_from_file(file_path):
             key_value = get_vorbis_field_case_insensitive(audio, 'initialkey')
             if not key_value:
                 key_value = get_vorbis_field_case_insensitive(audio, 'KEY')
-            return True, key_value, 'ogg', None
+
+            # Read metadata from Vorbis comments
+            artist = get_vorbis_field_case_insensitive(audio, 'artist')
+            title = get_vorbis_field_case_insensitive(audio, 'title')
+            album = get_vorbis_field_case_insensitive(audio, 'album')
+
+            return True, key_value, 'ogg', None, artist, title, album
 
         # AIFF/AIF files - read ID3 tags
         elif file_ext in ['.aiff', '.aif']:
             audio = AIFF(file_path)
-            if audio.tags and 'TKEY' in audio.tags:
-                key_value = str(audio.tags['TKEY'].text[0]) if audio.tags['TKEY'].text else None
-                return True, key_value, file_ext[1:], None
-            return True, None, file_ext[1:], None
+            key_value = None
+            artist = None
+            title = None
+            album = None
+
+            if audio.tags:
+                key_value = str(audio.tags['TKEY'].text[0]) if 'TKEY' in audio.tags and audio.tags['TKEY'].text else None
+                artist = str(audio.tags['TPE1'].text[0]) if 'TPE1' in audio.tags and audio.tags['TPE1'].text else None
+                title = str(audio.tags['TIT2'].text[0]) if 'TIT2' in audio.tags and audio.tags['TIT2'].text else None
+                album = str(audio.tags['TALB'].text[0]) if 'TALB' in audio.tags and audio.tags['TALB'].text else None
+
+            return True, key_value, file_ext[1:], None, artist, title, album
 
         # WAV files - read ID3 tags
         elif file_ext == '.wav':
             audio = WAVE(file_path)
-            if audio.tags and 'TKEY' in audio.tags:
-                key_value = str(audio.tags['TKEY'].text[0]) if audio.tags['TKEY'].text else None
-                return True, key_value, 'wav', None
-            return True, None, 'wav', None
+            key_value = None
+            artist = None
+            title = None
+            album = None
+
+            if audio.tags:
+                key_value = str(audio.tags['TKEY'].text[0]) if 'TKEY' in audio.tags and audio.tags['TKEY'].text else None
+                artist = str(audio.tags['TPE1'].text[0]) if 'TPE1' in audio.tags and audio.tags['TPE1'].text else None
+                title = str(audio.tags['TIT2'].text[0]) if 'TIT2' in audio.tags and audio.tags['TIT2'].text else None
+                album = str(audio.tags['TALB'].text[0]) if 'TALB' in audio.tags and audio.tags['TALB'].text else None
+
+            return True, key_value, 'wav', None, artist, title, album
 
         else:
-            return False, None, None, f"Unsupported file format: {file_ext}"
+            return False, None, None, f"Unsupported file format: {file_ext}", None, None, None
 
     except Exception as e:
-        return False, None, None, str(e)
+        return False, None, None, str(e), None, None, None
 
 
 def write_key_to_file(file_path, key_value):
@@ -487,7 +530,7 @@ class KeyTaggingServer:
 
             # If no key provided, treat as read request
             if not key_value or key_value == '':
-                success, read_key, format_type, error_msg = read_key_from_file(audio_path)
+                success, read_key, format_type, error_msg, artist, title, album = read_key_from_file(audio_path)
 
                 if success:
                     # Extract album art if present
@@ -498,7 +541,10 @@ class KeyTaggingServer:
                         'status': 'success',
                         'key': read_key,
                         'filename': audio_path.name,
-                        'format': format_type
+                        'format': format_type,
+                        'artist': artist,
+                        'title': title,
+                        'album': album
                     }
 
                     # Add album art path if extracted
